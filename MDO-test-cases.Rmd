@@ -1,0 +1,238 @@
+---
+title: 'Multi-fidelity for "MDO using Gaussian Processes", an extract from "Aerospace System Analysis and Optimization in Uncertainty (3.3)"'
+author: "Nicolas Garland, Rodolphe Le Riche, Yann Richet, Nicolas Durrande"
+date: "2021"
+output: html_document
+---
+
+
+___Disclaimer: This is an extract from the book "Aerospace System Analysis and Optimization in Uncertainty", which provide a generic methodology to build seemingly credible response functions for several standard numerical simulations types: mesh-based, Monte-Carlo and time-step simulators. The whole book is available at [https://doi.org/10.1007/978-3-030-39126-3].___
+
+
+[...] we consider a standard objective function modified for the purpose of studying multifidelity. 
+A slight modification to the Branin function will be the basis of our tests: 
+\begin{equation}
+\label{eq-modbranin}
+\begin{split}
+\overline{x_1} &= 15 x_1 -5 \quad , \quad \overline{x_2} = 15 x_2 \\
+y(x) & = \left( \overline{x_2} - \frac{5 {\overline{x_1}}^2}{4 \pi^2} + \frac{5 \overline{x_1}}{\pi} -6 \right)^2
++ 10 \left(1 - \frac{1}{8\pi}\right) \cos(\overline{x_1}) +11 
+- \exp(-\frac{(\overline{x_1}-0.5)^2}{15})
+\end{split}
+\end{equation}
+The function is plotted in Figure \ref{fig-branin}. The modification aims at having only 1 global optimum at at $(0.543, 0.150)$ and 2 local optima. The modified Branin function will soon be further transformed with different perturbations to emulate mesh-based, Monte-Carlo and time-step simulators, which correspond to three different convergence behaviors.
+
+```{r echo=F, warning=FALSE, fig.height=3, fig.width=4, fig.cap="The modified Branin function of formula (\\ref{eq-modbranin}) which serves as the simulation of highest fidelity. The filled bullet is the global optimum, the empty bullets are the local optima.\\label{fig-branin}"}
+.as_x <- function(x) {
+  if (!is.matrix(x)) {
+    if (length(x)>1) {
+      if (is.list(x)) {
+        x=unlist(x)
+      }
+      x=matrix(x,nrow=1)
+    }
+    if (!is.matrix(x)) x=matrix(x,ncol=1)
+  }
+  return(x)
+}
+```
+
+```{r}
+branin = function (x) {
+  x = .as_x(x)
+  x1 <- x[,1] * 15 - 5
+  x2 <- x[,2] * 15
+  (x2 - 5/(4 * pi^2) * (x1^2) + 5/pi * x1 - 6)^2 + 10 * (1 - 1/(8 * pi)) * cos(x1) + 10
+}
+branin.argmin = matrix(c(0.9616520, 0.15,0.1238946, 0.8166644,0.5427730, 0.15),ncol=2,byrow=TRUE)
+branin_mod = function(x) matrix(1+branin(x)-(exp(-(.as_x(x)[,1]-0.5)^2/15)),ncol=1)
+branin_mod.argmin = matrix(branin.argmin[ which.min(branin_mod(branin.argmin)),],ncol=2)
+f = branin_mod
+```
+
+```{r fig-branin, echo=F, warning=FALSE, fig.height=3, fig.width=4, fig.cap="The modified Branin function of formula (\\ref{eq-modbranin}) which serves as the simulation of highest fidelity. The filled bullet is the global optimum, the empty bullets are the local optima.\\label{fig-branin}"}
+#DiceView::contourview.fun(f,npoints=40,nlevels=50, title="Branin* function")
+#points(branin.argmin,col='red',pch=21)
+#points(branin_mod.argmin,col='red',pch=20)
+
+#' @test contourLines.fun(function(X) sum(sin(X)),levels=11)
+f_colors=gray.colors(51)
+f_levels = seq(0,300,l=51)#seq(0,sqrt(300),l=51)^2
+f_color = function(level) f_colors[which(level==f_levels)]
+contourLines.fun = function(fun,x=seq(0,1,l=31),y=seq(0,1,l=31),levels,...) {
+  if (length(levels)==1)
+    contourLines(x,y,z=matrix(apply(expand.grid(x,y),1,fun),ncol=length(y),nrow=length(x)),nlevels = levels,...)
+  else
+    contourLines(x,y,z=matrix(apply(expand.grid(x,y),1,fun),ncol=length(y),nrow=length(x)),levels = levels,...)
+}
+
+plot3d.fun = function(f,title=NULL,f.name="y", ...){
+  library(scatterplot3d)
+  .x = seq(0,1,,31)
+  .y = matrix(apply(expand.grid(.x,.x),1,f),nrow=length(.x))
+  .p3d = scatterplot3d(c(0,1),c(0,1),c(0,300),type='n',lab.z=4,
+                zlab = eval(parse(text=paste0("expression(",f.name,"(x[1], x[2]))"))),
+                xlab = expression(x[1]), ylab = expression(x[2]), cex.axis=0.7,
+                box = F,grid = F, angle=70,mar=c(3,3,0,2),main=paste0("\n",title), ...)
+  
+  .l = contourLines(.x,.x,.y,levels = f_levels)
+  #for (l in .l) .p3d$points3d(l$x,l$y,rep(f(c(l$x[1],l$y[1])),length(l$x)),type='l',col='black') #rep(-100,length(l$x))
+  for (l in .l) .p3d$points3d(l$x,l$y,rep(0,length(l$x)),type='l',col='grey')
+  
+  for(i in length(.x):1) .p3d$points3d(rep(.x[i], length(.x)), .x, .y[i,], type = "l")
+  for(i in length(.x):1) .p3d$points3d(.x, rep(.x[i], length(.x)), .y[,i], type = "l")
+  
+  return(.p3d)
+}
+  
+.p3d = plot3d.fun(f)
+.p3d$points3d(cbind(branin.argmin,apply(branin.argmin,1,f)),col='red',pch=21)
+.p3d$points3d(cbind(branin_mod.argmin,f(branin_mod.argmin)),col='red',pch=20)
+```
+
+<!--```{r, warning=FALSE, message=FALSE} -->
+<!--.fs = list.files("../cokm/R",pattern = "*.R", include.dirs = F, ignore.case = TRUE) -->
+<!--for (.f in .fs) source(file.path("../cokm/R",.f)) -->
+<!--``` -->
+
+
+___We propose some modifications of this analytical function to build more complex functions that mimic the behavior of real-world simulations response surface. These ,modifications are generic and should be transposed to other analytical functions.___
+
+<!-- version moved from below -->
+
+
+<!-- ```{r, warning=FALSE, message=FALSE} -->
+<!-- .fs = list.files("../cokm/R",pattern = "*.R", include.dirs = F, ignore.case = TRUE) -->
+<!-- for (.f in .fs) source(file.path("../cokm/R",.f)) -->
+
+<!-- ei_colors=gray.colors(31) -->
+<!-- ei_levels = seq(0,20,l=31) -->
+<!-- ei_color = function(level) ei_colors[which(level==ei_levels)] -->
+
+<!-- eiz_colors=ei_colors -->
+<!-- eiz_levels = seq(0,.1,l=31) -->
+<!-- eiz_color = function(level) eiz_colors[which(level==eiz_levels)] -->
+<!-- ``` -->
+
+
+<!-- ```{r echo=F} -->
+<!-- .p3d = plot3d.fun(f) -->
+<!-- .p3d$points3d(cbind(branin.argmin,apply(branin.argmin,1,f)),col='red',pch=21) -->
+<!-- .p3d$points3d(cbind(branin_mod.argmin,f(branin_mod.argmin)),col='red',pch=20) -->
+<!-- ``` -->
+
+
+<!-- end version moved from below -->
+
+
+_Mesh-based simulations_ (like finite-elements solvers) are mainly converging smoothly with the mesh size. They yield objectives that evolve continuously with the level of details and tend to an asymptotic objective function. Of course, this characterization of mesh-based simulations neglects possible numerical instabilities that occur with changes in discretization. 
+The smooth convergence is emulated as a ponderation between the asymptotic objective function and a continuous perturbation (a quadratic polynomial). The ponderation is a logarithm of the number of nodes 
+<!-- follows a logarithmic error depending on mesh node distances  -->
+(see Figure \ref{fig-mesh}).
+
+$$
+y_{mesh}(x, n_{nodes}) = y(x) \times min(1,n_{nodes}) + 100 \sum_{i=1}^{n} (x_i-0.5)^2 \times (1-min(1,n_{nodes}))
+$$
+
+```{r}
+#' @test x = matrix(runif(10),nrow=5); f_mesh(x,5)[1]; f_mesh(x[1,],5)
+#' @test x = matrix(runif(10),nrow=5); f_mesh(x,1E8)/f(x)
+f_mesh = function(x,nodes_number) {
+  x = .as_x(x)
+  nodes_dist = log10(nodes_number)/(2^3) # for 3D finite-difference code
+  a = pmin(1,nodes_dist) # threshold of 1E8 nodes
+  return(f(x) * a + 100*rowSums((x-.5)^2) * (1-a))
+}
+```
+
+```{r echo=FALSE, fig.height=5, fig.width=8, fig.cap="Emulation of mesh-based multifidelity simulations by continuous perturbations of the Branin function.\\label{fig-mesh}"}
+#DiceView::contourview.fun( function(x) f_mesh(x,nodes_number=1000) ,npoints=40,nlevels=50, title="Objective mesh function (10 nodes)")
+par(mfrow=c(2,2), cex=0.7)
+.p3d = plot3d.fun(function(x) f_mesh(x,nodes_number=10) , f.name="{y^(1)}", title="(10 nodes)")
+.p3d = plot3d.fun(function(x) f_mesh(x,nodes_number=100) , f.name="{y^(2)}", title="(100 nodes)")
+.p3d = plot3d.fun(function(x) f_mesh(x,nodes_number=10000) , f.name="{y^(3)}", title="(1E4 nodes)")
+.p3d = plot3d.fun(function(x) f_mesh(x,nodes_number=100000000) , f.name="{y^(4)}", title="Objective function (1E8 nodes)")
+par(mfrow=c(1,1), cex=0.5)
+```
+
+_Monte Carlo-based simulations_ are converging with an added white noise which decreases with the size of the random sample used. 
+This noise, standing for the simulation error, follows the central limit theorem and its variance decreases in 1/(number of samples). Moreover, the white noise has no correlation in the space of the parameters $(x_1,x_2)$. The effect of such fidelity levels is illustrated in Figure \ref{fig-MCperturb}.
+
+$$
+y_{MC}(x, n_{particles}) = y(x) + 100 \times \mathcal{N}(0,1/\sqrt{n_{particles}})
+$$
+
+```{r}
+#' @test x = matrix(runif(10),nrow=5); set.seed(1); f_mc(x,5)[1]; set.seed(1); f_mc(x[1,],5)
+#' @test x = matrix(runif(10),nrow=5); f_mc(x,1E8)/f(x)
+f_mc = function(x,mc_sample_size) {
+  x = .as_x(x)
+  sd = 1/sqrt(mc_sample_size)
+  return(f(x) + 100*rnorm(nrow(x),0,sd))
+}
+```
+
+```{r echo=FALSE, fig.height=5, fig.width=8, fig.cap="Emulation of Monte-Carlo based multifidelity simulations by added white noise perturbations of the Branin function.\\label{fig-MCperturb}"}
+#DiceView::contourview.fun( function(x) f_mesh(x,nodes_number=1000) ,npoints=40,nlevels=50, title="Objective mesh function (10 nodes)")
+
+par(mfrow=c(2,2), cex=0.7)
+.p3d = plot3d.fun(function(x) f_mc(x,mc_sample_size=10) , f.name="{y^(1)}", title="(10 samples)")
+.p3d = plot3d.fun(function(x) f_mc(x,mc_sample_size=100) , f.name="{y^(2)}",title="(100 samples)")
+.p3d = plot3d.fun(function(x) f_mc(x,mc_sample_size=10000) ,f.name="{y^(3)}", title="(1E4 samples)")
+.p3d = plot3d.fun(function(x) f_mc(x,mc_sample_size=100000000) , f.name="{y^(4)}",title="Objective function (1E8 samples)")
+```
+
+
+In the two previous examples, the simulation fidelity describes the degree of convergence of a simulation.
+Cokriging is also useful for discrete iterative simulations where the results of one step give the boundary conditions of the next one. Time or space iterated solvers are typical cases. Such _time dependent simulations_ (like a discrete-time iterative MDO solver) are not converging toward an asymptotic solution, in the sense that the ending "time" (which may also be another dimension) is not approximated by previous times with an "error" that decreases with steps. Nevertheless, the intrinsic Markovian behavior of such simulation is well suited to cokriging models. A third analytical test case is made of 4 steps of an autoregressive process (AR1) whose last iteration is the "high-fidelity" Branin objective function (see Figure \ref{fig-AR1}).
+
+$$
+y_{AR}(x, t) = y(x) - 80 \times \sum_{i=4}^{t} (4-i) \times \sum_{i=1}^{n} (x_i-0.5)^2 -80
+$$
+
+```{r}
+#' @test x = matrix(runif(10),nrow=5); f_time(x,2)[1];  f_time(x[1,],2)
+#' @test x = matrix(runif(10),nrow=5); f_time(x,4)/f(x)
+f_time = function(x,time_step) {
+  x = .as_x(x)
+  eps = function(t) 80*(4-t) * (rowSums((x-.5)^2) ) -80 #+ (-1)^(t) * 60
+  return(f(x) - rowSums(matrix(sapply(4:time_step,eps),ncol=length(4:time_step))) -80)
+}
+```
+
+
+```{r echo=FALSE, fig.height=5, fig.width=8, fig.cap="Illustration of the 4 AR time steps that make the third analytical test case.\\label{fig-AR1}"}
+ #DiceView::contourview.fun( function(x) f_mesh(x,nodes_number=1000) ,npoints=40,nlevels=50, title="Objective mesh function (10 nodes)") 
+ par(mfrow=c(2,2), cex=0.7)
+ .p3d = plot3d.fun(function(x) f_time(x,time_step=1) , f.name="{y^(1)}", title="(step 1)") 
+.p3d = plot3d.fun(function(x) f_time(x,time_step=2) , f.name="{y^(2)}", title="(step 2)") 
+.p3d = plot3d.fun(function(x) f_time(x,time_step=3) , f.name="{y^(3)}", title="(step 3)") 
+.p3d = plot3d.fun(function(x) f_time(x,time_step=4) , f.name="{y^(4)}", title="Objective function (step 4)") 
+``` 
+
+
+_Add-on: iterative regularization_
+
+$$
+y_{swell}(x, s) = y(x^s)
+$$
+
+
+```{r}
+#' @test x = matrix(runif(10),nrow=5); set.seed(1); f_swell(x,5)[1]; set.seed(1); f_swell(x[1,],5)
+#' @test x = matrix(runif(10),nrow=5); f_swell(x,4)/f(x)
+f_swell = function(x,swell) {
+  x = .as_x(x)
+  return(f(x^swell))
+}
+```
+
+
+```{r echo=FALSE, fig.height=5, fig.width=8, fig.cap="Emulation of 'iterative regularization' based simulations by non-isotropic shifting of the Branin function.\\label{fig-Swellperturb}"}
+#DiceView::contourview.fun( function(x) f_mesh(x,nodes_number=1000) ,npoints=40,nlevels=50, title="Objective mesh function (10 nodes)")
+par(mfrow=c(2,2), cex=0.7)
+.p3d = plot3d.fun(function(x) f_swell(x,swell=8) , f.name="{y^(1)}", title="(swell 8)")
+.p3d = plot3d.fun(function(x) f_swell(x,swell=4) , f.name="{y^(2)}",title="(swell 4)")
+.p3d = plot3d.fun(function(x) f_swell(x,swell=2) ,f.name="{y^(3)}", title="(swell 2)")
+.p3d = plot3d.fun(function(x) f_swell(x,swell=1) , f.name="{y^(4)}",title="Objective function (swell 1)")
+```
